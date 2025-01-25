@@ -1,0 +1,22 @@
+version: "3.8"
+
+networks:
+  prod_net:
+    driver: bridge
+
+services:
+  serving-api:
+    container_name: serving-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./api.py:/app/api.py
+      - ../data/prod_data.csv:/data/prod_data.csv
+      - ../data/ref_data.csv:/data/ref_data.csv
+      - ../artifacts:/artifacts
+      - ../scripts/fct_model.py:/app/fct_model.py
+    ports:
+      - "8080:8080"
+    networks:
+      - prod_net

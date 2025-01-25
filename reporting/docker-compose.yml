@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  reporting:
+    container_name: reporting
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../data:/data
+      - ../artifacts:/artifacts
+      - ./project.py:/app/project.py # Mount project.py directly for faster development
+    ports:
+      - "8082:8082"

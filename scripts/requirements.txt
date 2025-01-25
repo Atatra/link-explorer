@@ -1,0 +1,12 @@
+# Requires Python==3.12 to generate .pkl files
+
+dill
+librosa
+numpy
+pandas
+seaborn
+keras
+joblib
+scikit-learn
+matplotlib
+tensorflow
