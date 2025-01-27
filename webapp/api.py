@@ -5,95 +5,95 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# TODO : Peux être d'abord récuperer le code de la page web grâce au lien (et une API) pour ensuite le passer à l'API de résumé
+
+
 # App Title
-st.title("Détection d'émotion à partir de la voix")
+st.title("Link Explorer")
 
 # Description
-st.write("Le but de cette application est de prédire l'émotion d'une personne à partir de sa voix. Vous pouvez uploader un fichier audio (.wav) pour effectuer la prédiction.")
+st.write("Le but de cette application est de résumer le contenu d'une page web en quelques phrases. Pour cela, il suffit de renseigner l'URL de la page à explorer et l'application se charge de résumer le contenu de la page.")
 
 # Initialize session state
-if 'uploaded_file' not in st.session_state:
-    st.session_state['uploaded_file'] = None
+if 'given_link' not in st.session_state:
+    st.session_state['given_link'] = None
 
-if 'last_prediction' not in st.session_state:
-    st.session_state['last_prediction'] = None
+if 'last_summary' not in st.session_state:
+    st.session_state['last_summary'] = None
 
-if 'last_audio' not in st.session_state:
-    st.session_state['last_audio'] = None
+if 'last_link' not in st.session_state:
+    st.session_state['last_link'] = None
 
 if 'feedback_sent' not in st.session_state:
     st.session_state['feedback_sent'] = False
 
-# Emotion Mapping
-emotion_mapping = {
-    'Colère 😡​': 'C',
-    'Tristesse 😢​': 'T',
-    'Joie 😁​': 'J',
-    'Peur 😨​': 'P',
-    'Dégoût ​☹️​': 'D',
-    'Surprise ​​😮​': 'S',
-    'Neutre 😐​': 'N'
-}
-
-# Reverse mapping for feedback submission
-reverse_emotion_mapping = {v: k for k, v in emotion_mapping.items()}
-
-def predict_emotion(audio_data):
-    api_url = "http://serving-api:8080/predict"
-    files = {'file': ('audio.wav', audio_data, 'audio/wav')}
+def predict_url_content(url):
+    api_url = "http://serving-api:8080/summary"
+    files = {'file': ('url.txt', url, 'text/plain')}
     try:
         response = requests.post(api_url, files=files)
-        if response.status_code == 200:
-            result = response.json()
-            prediction = result.get('prediction', 'Inconnue')
-            st.session_state['last_prediction'] = prediction
-            st.success(f"Émotion détectée : {prediction}")
+        response.raise_for_status()
+        result = response.json()
+        summary = result.get('summary', None)
+        if summary:
+            st.session_state['last_summary'] = summary
+            st.success(summary)
         else:
-            st.error(f"Erreur lors de la prédiction: {response.status_code}")
-    except Exception as e:
+            st.error("L'API n'a pas renvoyé de résumé valide.")
+    except requests.exceptions.RequestException as e:
         st.error(f"Erreur lors de la connexion à l'API : {e}")
 
-def send_feedback(audio_data, predicted, correct):
+# Version de predict_url_content pour tester l'affichage avec un résumé fixe
+def predict_url_content_test(url):
+    lorem = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+    st.session_state['last_summary'] = lorem
+
+def send_feedback(url, summary, rating):
     api_url = "http://serving-api:8080/feedback"
-    files = {'file': ('audio.wav', audio_data, 'audio/wav')}
-    data = {'prediction': predicted, 'target': correct}
+    data = {
+        'url': url,
+        'summary': summary,
+        'rating': rating
+    }
     try:
-        response = requests.post(api_url, files=files, params=data)
-        if response.status_code == 200:
-            st.session_state['feedback_sent'] = True
-            st.success("Merci pour votre retour !")
-        else:
-            st.error(f"Erreur lors de l'envoi du feedback: {response.status_code}")
-    except Exception as e:
-        st.error(f"Erreur lors de la connexion à l'API de feedback : {e}")
+        response = requests.post(api_url, json=data)
+        response.raise_for_status()
+        st.session_state['feedback_sent'] = True
+        st.success("Feedback envoyé avec succès !")
+    except requests.exceptions.RequestException as e:
+        st.error(f"Erreur lors de la connexion à l'API : {e}")
 
-def feedback_section(audio_data, prediction):
-    st.write("## Retour sur la prédiction")
+def feedback_section(summary, url):
+    st.write("## Feedback")
+
+    if st.session_state['feedback_sent']:
+        st.success("Votre feedback a déjà été envoyé ! Merci.")
+        return
+
     with st.form("feedback_form"):
-        is_correct = st.radio("La prédiction est-elle correcte ?", ("Oui ✅", "Non ❌"))
-        correct_emotion = None
-        if is_correct == "Non ❌":
-            correct_emotion = st.selectbox("Sélectionnez l'émotion correcte dans le cas où la prédiction est incorrecte :", options=list(emotion_mapping.keys()), index=None)
+        st.write("### Donnez une note à la qualité du résumé :")
+        rating = st.slider("Note (1 : Très mauvais, 5 : Excellent)", min_value=1, max_value=5, value=3)
         submitted = st.form_submit_button("Envoyer le feedback")
+
         if submitted:
-            if is_correct == "Oui ✅":
-                prediction_code = emotion_mapping[prediction]
-                send_feedback(audio_data, prediction_code, prediction_code)
-            elif correct_emotion is not None:
-                correct_emotion_code = emotion_mapping[correct_emotion]
-                prediction_code = emotion_mapping[prediction]
-                send_feedback(audio_data, prediction_code, correct_emotion_code)
+            send_feedback(url, summary, rating)
+            st.session_state['feedback_sent'] = True
 
-uploaded_file = st.file_uploader("Uploader un fichier audio (.wav)", type=['wav'])
-if uploaded_file is not None:
-    st.success("Fichier chargé avec succès !")
-    st.session_state['uploaded_file'] = uploaded_file
-    st.session_state['last_audio'] = uploaded_file
+# Input URL
+given_link = st.text_input("URL de la page à explorer")
 
-if st.session_state['uploaded_file'] is not None:
-    st.audio(st.session_state['uploaded_file'], format='audio/wav')
-    if st.button("Prédire l'émotion"):
-        predict_emotion(st.session_state['uploaded_file'].read())
+if given_link:
+    if given_link.startswith("http://") or given_link.startswith("https://"):
+        with st.spinner("Résumé en cours de génération..."):
+            predict_url_content_test(given_link)
+            st.session_state['given_link'] = given_link
+            st.session_state['last_link'] = given_link
+    else:
+        st.error("Veuillez fournir une URL valide commençant par http:// ou https://")
+else:
+    st.info("Entrez une URL pour commencer.")
 
-if st.session_state['last_prediction'] is not None:
-    feedback_section(st.session_state['last_audio'], st.session_state['last_prediction'])
+if st.session_state['last_summary']:
+    st.write("### Résumé :")
+    st.success(st.session_state['last_summary'])
+    feedback_section(st.session_state['last_summary'], st.session_state['last_link'])
