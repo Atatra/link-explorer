@@ -9,4 +9,8 @@ tensorflow
 librosa
 python-multipart
 pandas
-seaborn
+#seaborn
+beautifulsoup4
+transformers
+youtube-transcript-api
+#tf-keras

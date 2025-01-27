@@ -1,53 +1,55 @@
-from fastapi import FastAPI, File, UploadFile, BackgroundTasks
+# On first setup, the model FalconAI is downloaded from Huggingface and saved in the cache directory. (~5min)
+# Don't delete the docker env or the model will be downloaded again.
+# ~20s to generate a Wikipedia summary
+# ~1min to generate a youtube video summary (<10min).
+# Others depend on the page size.
+
+from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import joblib
 import librosa
 import io
+import os
 
-import fct_model
+import requests
+import re
+from bs4 import BeautifulSoup
+# For youtube
+from youtube_transcript_api import YouTubeTranscriptApi
+# For huggingface models
+from transformers import pipeline
+
+#import fct_model
 
 import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-k = 10
-deploy_only_best_acc = True
 
-artifacts_path = "/artifacts/"
-ref_path = "/data/ref_data.csv"
-prod_path = "/data/prod_data.csv"
+MAX_LENGTH = 500 # Max length of the summary
+MIN_LENGTH = 30
 
-encoder = joblib.load("/artifacts/encoder.pkl")
-model_data = joblib.load("/artifacts/model.pkl")
-model = model_data["model"]
-last_accuracy = model_data["last_accuracy"]
-scaler = joblib.load("/artifacts/scaler.pkl")
-
+@app.on_event("startup")
+def load_model():
+  global summarizer
+  summarizer = get_summarizer()
+    
 @app.get("/")
 def read_root(input):
   return {"message": f"Hello, {input}"}
 
 @app.post("/predict")
-async def predict(file: UploadFile = File(...)):
+async def predict(url: str):
   """
-    Predict endpoint to handle audio file uploads and make predictions.
-    - file: Uploaded .wav file.
+    Return summary of link's content.
   """
-  logger.info("Received file: %s", file.filename)
-
-  # Load the audio file using librosa
-  try:
-    audio_bytes = await file.read()
-    audio_stream = io.BytesIO(audio_bytes)
-    data, sample_rate = librosa.load(audio_stream, duration=7, offset=0.2)
-  except Exception as e:
-    return {"error": f"Failed to process the audio file: {str(e)}"}
-  
-  # Return the predicted label
-  logger.info("Model accuracy: %s", last_accuracy)
-  return fct_model.predict_on_audio(model, encoder, scaler, data, sample_rate)
+  response = requests.get(url)
+  soup = BeautifulSoup(response.text, 'html.parser')
+  extracted_text = main_content_extractor(soup, url)
+  summary = generate_summary(extracted_text)
+  return {"summary": summary, "original": extracted_text}
 
 @app.post("/feedback")
 async def feedback(background_tasks: BackgroundTasks, prediction, target, file: UploadFile = File(...)):
@@ -55,54 +57,57 @@ async def feedback(background_tasks: BackgroundTasks, prediction, target, file: 
   """
   Send feedback of model's prediction.
   Feedback is then saved in /data/prod_data.csv with embedding, target, and prediction.
-  
-  Args:
-  - prediction (string): 'C' or 'T' or 'J' or 'P' or 'D' or 'S' or 'N'
-  - target (string): 'C' or 'T' or 'J' or 'P' or 'D' or 'S' or 'N'
-  - file (UploadFile)
   """
-  logger.info("Received file: %s", file.filename)
-  logger.info("Received prediction: %s", prediction)
-  logger.info("Received target: %s", target)
-  
-  try:
-    audio_bytes = await file.read()
-    audio_stream = io.BytesIO(audio_bytes)
-    data, sample_rate = librosa.load(audio_stream, duration=7, offset=0.2)
-  except Exception as e:
-    return {"error": f"Failed to process the audio file: {str(e)}"}
-  
-  # Save feedback in prod_data
-  fct_model.save_feedback(data, sample_rate, target, prediction, prod_path)
-  
-  # Check if model needs to be updated and update in a non-blocking manner
-  #if not hasattr(feedback, "task_added") or not feedback.task_added:
-  #  feedback.task_added = True
-  background_tasks.add_task(retrain_model)
+  return None
 
-  return JSONResponse(
-    content={"message": "Merci pour votre retour !"},
-    status_code=200
-  )
+def main_content_extractor(soup, url):
+  text = None
+  
+  if ("wikipedia" in url):
+    # Find all p direct children of target_div
+    target_div = soup.find('div', class_='mw-content-ltr mw-parser-output')
+    paragraphs = " ".join([p.get_text() for p in target_div.find_all('p', recursive=False)]) # A revoir si on veut + de texte
+    logger.info("Text: %s", paragraphs)
     
-def retrain_model():
-  global model, last_accuracy, k, prod_path
-  # Check if model needs to be updated
-  if fct_model.should_retrain_model(k, prod_path):
-    logger.info("\nLast accuracy: %s", last_accuracy)
-    model_full, history = fct_model.train_save_model(ref_path, artifacts_path, 1, prod_path, not(deploy_only_best_acc), last_accuracy)
-    new_accuracy = history.history['accuracy'][-1]
-    if deploy_only_best_acc:
-      if new_accuracy > last_accuracy:
-        logger.info("New accuracy (%s) is better than last accuracy (%s). Deploying new model.", new_accuracy, last_accuracy)
-        model = model_full
-        last_accuracy = new_accuracy
-      else:
-        logger.info("New accuracy (%s) is worse than last accuracy (%s). Not deploying model.", new_accuracy, last_accuracy)
-    else:
-      # In case deploy_only_best_acc is False, always deploy the new model
-      logger.info("Deploying new model regardless of accuracy. New accuracy: %s, Last accuracy: %s", new_accuracy, last_accuracy)
-      model = model_full
-      last_accuracy = new_accuracy
-  else:
-    logger.info("Hoho")
+  elif ("youtube" in url): # Retreive transcript if exist
+    video_id = url.split("v=")[1]
+    try:
+      transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['fr', 'en'])
+      paragraphs = " ".join([t['text'] for t in transcript])
+    except:
+      raise HTTPException(status_code=404, detail="No transcript found for this video.")
+    
+  else: # Otherwise extract all text from page
+    paragraphs = soup.get_text()
+    
+  text = preprocess(paragraphs)
+  return text
+
+def preprocess(text):
+  """
+    Preprocess text.
+  """
+  text = text.replace("\n", " ").replace("\t", " ")
+  text = " ".join(text.split())  # Remove extra spaces
+  text = text.replace('"', "'")
+  text = re.sub(r'\[\d+\]', '', text)  # Remove citations
+  text = re.sub(r'\[.*?\]', '', text) # Remove hyperlinks
+  
+  return text
+
+def generate_summary(text):
+  logger.info("Received a summarization request.")
+  summary = summarizer(text, max_length=MAX_LENGTH, min_length=MIN_LENGTH, do_sample=False)[0]["summary_text"]
+  return summary
+
+def get_summarizer(model_name="Falconsai/text_summarization"):
+  cache_dir = "~/.cache/huggingface/hub/"  # Local directory to store models
+  logger.info(f"Model is saved in '{cache_dir}'...")
+  try:
+    logger.info(f"Initializing summarizer with model '{model_name}'...")
+    summarizer = pipeline("summarization", model=model_name)
+    logger.info("Model loaded successfully.")
+    return summarizer
+  except Exception as e:
+    logger.error(f"Failed to load the model: {e}")
+    raise
