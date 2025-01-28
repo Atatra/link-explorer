@@ -29,15 +29,16 @@ if 'feedback_sent' not in st.session_state:
 
 def predict_url_content(url):
     api_url = "http://serving-api:8080/summary"
-    files = {'file': ('url.txt', url, 'text/plain')}
+    params = {'url': url}
     try:
-        response = requests.post(api_url, files=files)
+        response = requests.post(api_url, params=params)
         response.raise_for_status()
         result = response.json()
         summary = result.get('summary', None)
+        original = result.get('original', None)
         if summary:
             st.session_state['last_summary'] = summary
-            st.success(summary)
+            #st.success(summary)
         else:
             st.error("L'API n'a pas renvoyé de résumé valide.")
     except requests.exceptions.RequestException as e:
@@ -85,7 +86,7 @@ given_link = st.text_input("URL de la page à explorer")
 if given_link:
     if given_link.startswith("http://") or given_link.startswith("https://"):
         with st.spinner("Résumé en cours de génération..."):
-            predict_url_content_test(given_link)
+            predict_url_content(given_link)
             st.session_state['given_link'] = given_link
             st.session_state['last_link'] = given_link
     else:

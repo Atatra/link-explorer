@@ -40,8 +40,8 @@ def load_model():
 def read_root(input):
   return {"message": f"Hello, {input}"}
 
-@app.post("/predict")
-async def predict(url: str):
+@app.post("/summary")
+async def summary(url: str):
   """
     Return summary of link's content.
   """
