@@ -4,14 +4,9 @@
 # ~1min to generate a youtube video summary (<10min).
 # Others depend on the page size.
 
-from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-import joblib
-import librosa
-import io
+from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
 import os
-
+import pandas as pd
 import requests
 import re
 from bs4 import BeautifulSoup
@@ -20,6 +15,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 # For huggingface models
 from transformers import pipeline
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+import csv
 
 #import fct_model
 
@@ -31,6 +27,7 @@ app = FastAPI()
 
 MAX_LENGTH = 500 # Max length of the summary
 MIN_LENGTH = 30
+prod_path = "/data/prod_data.csv"
 
 @app.on_event("startup")
 def load_model():
@@ -61,13 +58,20 @@ async def summary(url: str, version: str = "v1"):
   return {"summary": summary, "original": extracted_text}
 
 @app.post("/feedback")
-async def feedback(background_tasks: BackgroundTasks, prediction, target, file: UploadFile = File(...)):
-  global model, last_accuracy
+async def feedback(background_tasks: BackgroundTasks, request: Request):
   """
   Send feedback of model's prediction.
-  Feedback is then saved in /data/prod_data.csv with embedding, target, and prediction.
+  Feedback is then saved in /data/prod_data.csv with full text, summary, and rating.
   """
-  return None
+  data = await request.json()
+  url = data.get("url")
+  # Client should send the full text, but for now...
+  response = requests.get(url) 
+  soup = BeautifulSoup(response.text, 'html.parser')
+  full = main_content_extractor(soup, url)
+  summary = data.get("summary")
+  rating = data.get("rating")
+  save_feedback(full, summary, rating, output_path=prod_path)
 
 def main_content_extractor(soup, url):
   text = None
@@ -132,3 +136,10 @@ def get_summary(text, tokenizer, model):
   pred_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
   return pred_text
+
+def save_feedback(full, summary, rating, output_path):
+  feedback_data = {"article": full, "abstract": summary, "rating": rating}
+  feedback_df = pd.DataFrame([feedback_data])
+  file_exists_and_non_empty = os.path.isfile(output_path) and os.path.getsize(output_path) > 0
+  feedback_df.to_csv(output_path, mode='a', header=not file_exists_and_non_empty, index=False,
+                     quoting=csv.QUOTE_MINIMAL)
