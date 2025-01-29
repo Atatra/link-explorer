@@ -14,3 +14,4 @@ beautifulsoup4
 transformers
 youtube-transcript-api
 tf-keras
+torch

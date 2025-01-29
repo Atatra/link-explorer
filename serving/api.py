@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 from youtube_transcript_api import YouTubeTranscriptApi
 # For huggingface models
 from transformers import pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 #import fct_model
 
@@ -33,8 +34,10 @@ MIN_LENGTH = 30
 
 @app.on_event("startup")
 def load_model():
-  global summarizer
-  summarizer = get_summarizer()
+  """ global summarizer
+  summarizer = get_summarizer() """
+  global model, tokenizer
+  model, tokenizer = get_model_tokenizer()
     
 @app.get("/")
 def read_root(input):
@@ -48,7 +51,8 @@ async def summary(url: str):
   response = requests.get(url)
   soup = BeautifulSoup(response.text, 'html.parser')
   extracted_text = main_content_extractor(soup, url)
-  summary = generate_summary(extracted_text)
+  #summary = generate_summary(extracted_text)
+  summary = get_summary(extracted_text, model=model, tokenizer=tokenizer)
   return {"summary": summary, "original": extracted_text}
 
 @app.post("/feedback")
@@ -72,7 +76,7 @@ def main_content_extractor(soup, url):
   elif ("youtube" in url): # Retreive transcript if exist
     video_id = url.split("v=")[1]
     try:
-      transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['fr', 'en'])
+      transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
       paragraphs = " ".join([t['text'] for t in transcript])
     except:
       raise HTTPException(status_code=404, detail="No transcript found for this video.")
@@ -100,7 +104,7 @@ def generate_summary(text):
   summary = summarizer(text, max_length=MAX_LENGTH, min_length=MIN_LENGTH, do_sample=False)[0]["summary_text"]
   return summary
 
-def get_summarizer(model_name="Falconsai/text_summarization"):
+def get_summarizer(model_name="claradlnv/distilbart-fine-tune"):
   cache_dir = "~/.cache/huggingface/hub/"  # Local directory to store models
   logger.info(f"Model is saved in '{cache_dir}'...")
   try:
@@ -111,3 +115,15 @@ def get_summarizer(model_name="Falconsai/text_summarization"):
   except Exception as e:
     logger.error(f"Failed to load the model: {e}")
     raise
+
+def get_model_tokenizer(model_name="claradlnv/distilbart-fine-tune"):
+  model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+  tokenizer = AutoTokenizer.from_pretrained(model_name)
+  return model, tokenizer
+
+def get_summary(text, tokenizer, model):
+  inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=tokenizer.model_max_length).input_ids
+  outputs = model.generate(inputs, max_new_tokens=150, do_sample=False)
+  pred_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+  return pred_text
