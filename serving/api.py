@@ -84,7 +84,7 @@ def main_content_extractor(soup, url):
       transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
       paragraphs = " ".join([t['text'] for t in transcript])
     except:
-      raise HTTPException(status_code=404, detail="No transcript found for this video.")
+      raise HTTPException(status_code=404, detail="No english transcript found for this video.")
     
   else: # Otherwise extract all text from page
     paragraphs = soup.get_text()

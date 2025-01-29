@@ -41,6 +41,12 @@ def predict_url_content(url):
             #st.success(summary)
         else:
             st.error("L'API n'a pas renvoyé de résumé valide.")
+    except requests.exceptions.HTTPError as http_err:
+        if response.status_code == 404:
+            error_message = response.json().get("detail", "Unknown error")
+            st.error(f"{error_message}")
+        else:
+            st.error(f"Erreur HTTP : {http_err}")
     except requests.exceptions.RequestException as e:
         st.error(f"Erreur lors de la connexion à l'API : {e}")
 
