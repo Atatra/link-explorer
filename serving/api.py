@@ -34,9 +34,10 @@ MIN_LENGTH = 30
 
 @app.on_event("startup")
 def load_model():
-  """ global summarizer
-  summarizer = get_summarizer() """
-  global model, tokenizer
+  """ global summarizer """
+  #summarizer = get_summarizer()
+  global model, tokenizer, summarizer
+  summarizer = get_summarizer("Falconsai/text_summarization")
   model, tokenizer = get_model_tokenizer()
     
 @app.get("/")
@@ -44,15 +45,19 @@ def read_root(input):
   return {"message": f"Hello, {input}"}
 
 @app.post("/summary")
-async def summary(url: str):
+async def summary(url: str, version: str = "v1"):
   """
     Return summary of link's content.
+    - v1 for FalconsAI T5-small
+    - v2 for our fine-tuned distilBart on a caption summary dataset
   """
   response = requests.get(url)
   soup = BeautifulSoup(response.text, 'html.parser')
   extracted_text = main_content_extractor(soup, url)
-  #summary = generate_summary(extracted_text)
-  summary = get_summary(extracted_text, model=model, tokenizer=tokenizer)
+  if version == "v1":
+    summary = generate_summary(extracted_text)
+  else:
+    summary = get_summary(extracted_text, model=model, tokenizer=tokenizer)
   return {"summary": summary, "original": extracted_text}
 
 @app.post("/feedback")
