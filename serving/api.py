@@ -56,22 +56,19 @@ async def summary(url: str):
   summary = generate_summary(extracted_text)
   return {"summary": summary, "original": extracted_text} """
 
-class SummaryRequest(BaseModel):
-    url: str  # URL est maintenant obligatoire
-
 @app.post("/summary")
-async def summary(request: SummaryRequest):
+async def summary(url: str):
     """
     Retourne un résumé d'un contenu web à partir d'une URL uniquement.
     """
-    response = requests.get(request.url)
+    response = requests.get(url)
     
     # Vérifie si la requête a réussi (code 200)
     if response.status_code != 200:
         raise HTTPException(status_code=400, detail="Impossible de récupérer l'URL fournie.")
 
     soup = BeautifulSoup(response.text, 'html.parser')
-    extracted_text = main_content_extractor(soup, request.url)
+    extracted_text = main_content_extractor(soup, url)
 
     # Vérifie que du texte a bien été extrait
     if not extracted_text or len(extracted_text) < 50:
