@@ -36,7 +36,7 @@ prod_path = "/data/prod_data.csv"
 def load_model():
   """ global summarizer """
   #summarizer = get_summarizer()
-  global model, tokenizer, summarizer
+  global summarizerFalconT5, modelBart, tokenizerBart, modelT5, tokenizerT5
   summarizerFalconT5 = get_summarizer("Falconsai/text_summarization")
   modelBart, tokenizerBart = get_model_tokenizer(model_name="claradlnv/distilbart-fine-tune")
   modelT5, tokenizerT5 = get_model_tokenizer(model_name="maryemj/T5_Small_fineTuned")
@@ -55,7 +55,7 @@ async def summary(url: str, version: str = "v1"):
     - v3 for our fine-tuned T5-Small on a caption summary dataset
   """
   response = requests.get(url)
-# Vérifie si la requête a réussi (code 200)
+  # Vérifie si la requête a réussi (code 200)
   if response.status_code != 200:
     raise HTTPException(status_code=400, detail="Impossible de récupérer l'URL fournie.")
   soup = BeautifulSoup(response.text, 'html.parser')
@@ -65,11 +65,12 @@ async def summary(url: str, version: str = "v1"):
     raise HTTPException(status_code=400, detail="Aucun contenu pertinent trouvé sur la page.")
 
   if version == "v1":
-    summary = summarizer(extracted_text, max_length=MAX_LENGTH, min_length=MIN_LENGTH, do_sample=False)[0]["summary_text"]
+    summary = summarizerFalconT5(extracted_text, max_length=MAX_LENGTH, min_length=MIN_LENGTH, do_sample=False)[0]["summary_text"]
   elif version == "v2":
-    summary = get_summary(extracted_text, model=model, tokenizer=tokenizer)
+    summary = get_summary(extracted_text, model=modelBart, tokenizer=tokenizerBart)
   elif version == "v3":
-    summary = generate_summary(extracted_text)
+    summary = generate_summary(extracted_text, model=modelT5, tokenizer=tokenizerT5)
+
   return {"summary": summary, "original": extracted_text}
 
 
@@ -125,27 +126,6 @@ def preprocess(text):
   
   return text
 
-""" def generate_summary(text):
-  logger.info("Received a summarization request.")
-  summary = summarizer(text, max_length=MAX_LENGTH, min_length=MIN_LENGTH, do_sample=False)[0]["summary_text"]
-  return summary """
-
-
-def generate_summary(text):
-    logger.info("Received a summarization request.")
-    
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
-
-    # Envoyer sur GPU si disponible
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)
-    inputs = {key: value.to(device) for key, value in inputs.items()}
-
-    outputs = model.generate(**inputs, max_length=MAX_LENGTH, min_length=MIN_LENGTH, do_sample=False)
-
-    summary = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return summary
-
 def get_summarizer(model_name="claradlnv/distilbart-fine-tune"):
   cache_dir = "~/.cache/huggingface/hub/"  # Local directory to store models
   logger.info(f"Model is saved in '{cache_dir}'...")
@@ -158,12 +138,50 @@ def get_summarizer(model_name="claradlnv/distilbart-fine-tune"):
     logger.error(f"Failed to load the model: {e}")
     raise
 
-def get_model_tokenizer(model_name="claradlnv/distilbart-fine-tune"):
-  model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-  tokenizer = AutoTokenizer.from_pretrained(model_name)
-  return model, tokenizer
+def get_model_tokenizer(model_name="maryemj/T5_Small_fineTuned"):
+  """
+  Charge le modèle et le tokenizer depuis Hugging Face.
+  """
+  logger.info(f"Initializing model and tokenizer with '{model_name}'...")
+  try:
+
+    if model_name=="maryemj/T5_Small_fineTuned":
+      model = T5ForConditionalGeneration.from_pretrained(model_name)
+      tokenizer = T5Tokenizer.from_pretrained(model_name)
+      logger.info("Model and tokenizer loaded successfully.")
+      return model, tokenizer
+    
+    elif model_name=="claradlnv/distilbart-fine-tune":
+      model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+      tokenizer = AutoTokenizer.from_pretrained(model_name)
+      return model, tokenizer
+    
+  except Exception as e:
+    logger.error(f"Failed to load the model and tokenizer: {e}")
+    raise
+
+def generate_summary(text, tokenizer, model):
+  """
+  Generate summary for T5-small fine-tuned
+  """
+  logger.info("Received a summarization request.")
+  
+  inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
+
+  # Envoyer sur GPU si disponible
+  device = "cuda" if torch.cuda.is_available() else "cpu"
+  model.to(device)
+  inputs = {key: value.to(device) for key, value in inputs.items()}
+
+  outputs = model.generate(**inputs, max_length=MAX_LENGTH, min_length=MIN_LENGTH, do_sample=False)
+
+  summary = tokenizer.decode(outputs[0], skip_special_tokens=True)
+  return summary
 
 def get_summary(text, tokenizer, model):
+  """
+  Generate summary for distilBar fine-tuned
+  """
   inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=tokenizer.model_max_length).input_ids
   outputs = model.generate(inputs, max_new_tokens=150, do_sample=False)
   pred_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
