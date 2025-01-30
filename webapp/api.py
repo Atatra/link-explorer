@@ -7,6 +7,12 @@ from streamlit_star_rating import st_star_rating
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Liste des modèles disponibles
+models = {
+    'v1': 'T5-Small de FalconsAi',
+    'v2': 'distilBart fine-tuned'
+}
+
 # App Title
 st.title("Link Explorer")
 
@@ -32,9 +38,17 @@ if 'original_text' not in st.session_state:
 if 'show_original' not in st.session_state:
     st.session_state['show_original'] = False
 
+if 'chosen_model' not in st.session_state:
+    st.session_state['chosen_model'] = 'v1'
+
+def update_model():
+    st.session_state['chosen_model'] = st.session_state['model_selector']
+    st.session_state['given_link'] = None  # Reset the input to trigger a refresh
+
+
 def predict_url_content(url):
     api_url = "http://serving-api:8080/summary"
-    params = {'url': url}
+    params = {'url': url, 'version': st.session_state['chosen_model']}
     try:
         response = requests.post(api_url, params=params)
         response.raise_for_status()
@@ -61,7 +75,8 @@ def send_feedback(url, summary, rating):
     data = {
         'url': url,
         'summary': summary,
-        'rating': rating
+        'rating': rating,
+        'version': st.session_state['chosen_model']
     }
     try:
         response = requests.post(api_url, json=data)
@@ -85,6 +100,15 @@ def feedback_section(summary, url):
         if submitted:
             send_feedback(url, summary, rating)
             st.session_state['feedback_sent'] = True
+
+# Select model
+st.selectbox(
+    "Choisissez le modèle de résumé à utiliser :", 
+    list(models.keys()), 
+    format_func=lambda x: models[x], 
+    key="model_selector",  # Use a different key to track changes
+    on_change=update_model  # Call the function when model changes
+)
 
 # Input URL
 given_link = st.text_input("URL de la page à explorer")
