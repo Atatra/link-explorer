@@ -1,6 +1,8 @@
 import streamlit as st
 import requests
 import logging
+from streamlit_star_rating import st_star_rating
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -77,8 +79,7 @@ def feedback_section(summary, url):
         return
 
     with st.form("feedback_form"):
-        st.write("### Donnez une note à la qualité du résumé :")
-        rating = st.slider("Note (1 : Très mauvais, 5 : Excellent)", min_value=1, max_value=5, value=3)
+        rating = st_star_rating(label = "Donnez une note à la qualité du résumé :", maxValue = 5, defaultValue = 3, key = "rating", size = 20)
         submitted = st.form_submit_button("Envoyer le feedback")
         
         if submitted:
