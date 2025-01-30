@@ -19,6 +19,9 @@ from bs4 import BeautifulSoup
 from youtube_transcript_api import YouTubeTranscriptApi
 # For huggingface models
 from transformers import pipeline
+from transformers import T5ForConditionalGeneration, T5Tokenizer
+import torch
+
 
 #import fct_model
 
@@ -33,23 +36,50 @@ MIN_LENGTH = 30
 
 @app.on_event("startup")
 def load_model():
-  global summarizer
-  summarizer = get_summarizer()
+  """ global summarizer
+  summarizer = get_summarizer() """
+  global model, tokenizer
+  model, tokenizer = get_model_tokenizer()
     
 @app.get("/")
 def read_root(input):
   return {"message": f"Hello, {input}"}
 
-@app.post("/summary")
+""" @app.post("/summary")
 async def summary(url: str):
-  """
-    Return summary of link's content.
-  """
+  
+    #Return summary of link's content.
+  
   response = requests.get(url)
   soup = BeautifulSoup(response.text, 'html.parser')
   extracted_text = main_content_extractor(soup, url)
   summary = generate_summary(extracted_text)
-  return {"summary": summary, "original": extracted_text}
+  return {"summary": summary, "original": extracted_text} """
+
+class SummaryRequest(BaseModel):
+    url: str  # URL est maintenant obligatoire
+
+@app.post("/summary")
+async def summary(request: SummaryRequest):
+    """
+    Retourne un résumé d'un contenu web à partir d'une URL uniquement.
+    """
+    response = requests.get(request.url)
+    
+    # Vérifie si la requête a réussi (code 200)
+    if response.status_code != 200:
+        raise HTTPException(status_code=400, detail="Impossible de récupérer l'URL fournie.")
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+    extracted_text = main_content_extractor(soup, request.url)
+
+    # Vérifie que du texte a bien été extrait
+    if not extracted_text or len(extracted_text) < 50:
+        raise HTTPException(status_code=400, detail="Aucun contenu pertinent trouvé sur la page.")
+
+    summary = generate_summary(extracted_text)
+    return {"summary": summary, "original": extracted_text}
+
 
 @app.post("/feedback")
 async def feedback(background_tasks: BackgroundTasks, prediction, target, file: UploadFile = File(...)):
@@ -95,19 +125,38 @@ def preprocess(text):
   
   return text
 
-def generate_summary(text):
+""" def generate_summary(text):
   logger.info("Received a summarization request.")
   summary = summarizer(text, max_length=MAX_LENGTH, min_length=MIN_LENGTH, do_sample=False)[0]["summary_text"]
-  return summary
+  return summary """
 
-def get_summarizer(model_name="Falconsai/text_summarization"):
-  cache_dir = "~/.cache/huggingface/hub/"  # Local directory to store models
-  logger.info(f"Model is saved in '{cache_dir}'...")
-  try:
-    logger.info(f"Initializing summarizer with model '{model_name}'...")
-    summarizer = pipeline("summarization", model=model_name)
-    logger.info("Model loaded successfully.")
-    return summarizer
-  except Exception as e:
-    logger.error(f"Failed to load the model: {e}")
-    raise
+
+def generate_summary(text):
+    logger.info("Received a summarization request.")
+    
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
+
+    # Envoyer sur GPU si disponible
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+    inputs = {key: value.to(device) for key, value in inputs.items()}
+
+    outputs = model.generate(**inputs, max_length=MAX_LENGTH, min_length=MIN_LENGTH, do_sample=False)
+
+    summary = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return summary
+
+
+def get_model_tokenizer(model_name="maryemj/T5_Small_fineTuned"):
+    """
+    Charge le modèle et le tokenizer depuis Hugging Face.
+    """
+    logger.info(f"Initializing model and tokenizer with '{model_name}'...")
+    try:
+        model = T5ForConditionalGeneration.from_pretrained(model_name)
+        tokenizer = T5Tokenizer.from_pretrained(model_name)
+        logger.info("Model and tokenizer loaded successfully.")
+        return model, tokenizer
+    except Exception as e:
+        logger.error(f"Failed to load the model and tokenizer: {e}")
+        raise
