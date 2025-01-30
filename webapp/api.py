@@ -5,9 +5,6 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# TODO : Peux être d'abord récuperer le code de la page web grâce au lien (et une API) pour ensuite le passer à l'API de résumé
-
-
 # App Title
 st.title("Link Explorer")
 
@@ -27,6 +24,12 @@ if 'last_link' not in st.session_state:
 if 'feedback_sent' not in st.session_state:
     st.session_state['feedback_sent'] = False
 
+if 'original_text' not in st.session_state:
+    st.session_state['original_text'] = None
+
+if 'show_original' not in st.session_state:
+    st.session_state['show_original'] = False
+
 def predict_url_content(url):
     api_url = "http://serving-api:8080/summary"
     params = {'url': url}
@@ -36,9 +39,10 @@ def predict_url_content(url):
         result = response.json()
         summary = result.get('summary', None)
         original = result.get('original', None)
+        
         if summary:
             st.session_state['last_summary'] = summary
-            #st.success(summary)
+            st.session_state['original_text'] = original
         else:
             st.error("L'API n'a pas renvoyé de résumé valide.")
     except requests.exceptions.HTTPError as http_err:
@@ -49,11 +53,6 @@ def predict_url_content(url):
             st.error(f"Erreur HTTP : {http_err}")
     except requests.exceptions.RequestException as e:
         st.error(f"Erreur lors de la connexion à l'API : {e}")
-
-# Version de predict_url_content pour tester l'affichage avec un résumé fixe
-def predict_url_content_test(url):
-    lorem = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
-    st.session_state['last_summary'] = lorem
 
 def send_feedback(url, summary, rating):
     api_url = "http://serving-api:8080/feedback"
@@ -72,7 +71,7 @@ def send_feedback(url, summary, rating):
 
 def feedback_section(summary, url):
     st.write("## Feedback")
-
+    
     if st.session_state['feedback_sent']:
         st.success("Votre feedback a déjà été envoyé ! Merci.")
         return
@@ -81,7 +80,7 @@ def feedback_section(summary, url):
         st.write("### Donnez une note à la qualité du résumé :")
         rating = st.slider("Note (1 : Très mauvais, 5 : Excellent)", min_value=1, max_value=5, value=3)
         submitted = st.form_submit_button("Envoyer le feedback")
-
+        
         if submitted:
             send_feedback(url, summary, rating)
             st.session_state['feedback_sent'] = True
@@ -91,10 +90,13 @@ given_link = st.text_input("URL de la page à explorer")
 
 if given_link:
     if given_link.startswith("http://") or given_link.startswith("https://"):
-        with st.spinner("Résumé en cours de génération..."):
-            predict_url_content(given_link)
-            st.session_state['given_link'] = given_link
-            st.session_state['last_link'] = given_link
+        if st.session_state['given_link'] != given_link:
+            with st.spinner("Résumé en cours de génération..."):
+                predict_url_content(given_link)
+                st.session_state['given_link'] = given_link
+                st.session_state['last_link'] = given_link
+                st.session_state['show_original'] = False
+                st.session_state['feedback_sent'] = False
     else:
         st.error("Veuillez fournir une URL valide commençant par http:// ou https://")
 else:
@@ -103,4 +105,13 @@ else:
 if st.session_state['last_summary']:
     st.write("### Résumé :")
     st.success(st.session_state['last_summary'])
+    
+    # Button to toggle original text
+    if st.button("Afficher le texte original"):
+        st.session_state['show_original'] = not st.session_state['show_original']
+    
+    if st.session_state['show_original'] and st.session_state['original_text']:
+        st.write("### Texte Original :")
+        st.text_area("Contenu Original", st.session_state['original_text'], height=300)
+    
     feedback_section(st.session_state['last_summary'], st.session_state['last_link'])
