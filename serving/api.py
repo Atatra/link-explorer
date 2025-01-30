@@ -71,7 +71,8 @@ async def feedback(background_tasks: BackgroundTasks, request: Request):
   full = main_content_extractor(soup, url)
   summary = data.get("summary")
   rating = data.get("rating")
-  save_feedback(full, summary, rating, output_path=prod_path)
+  version = data.get("version")
+  save_feedback(full, summary, rating, version, output_path=prod_path)
 
 def main_content_extractor(soup, url):
   text = None
@@ -137,8 +138,8 @@ def get_summary(text, tokenizer, model):
 
   return pred_text
 
-def save_feedback(full, summary, rating, output_path):
-  feedback_data = {"article": full, "abstract": summary, "rating": rating}
+def save_feedback(full, summary, rating, version, output_path):
+  feedback_data = {"article": full, "abstract": summary, "rating": rating, "version": version}
   feedback_df = pd.DataFrame([feedback_data])
   file_exists_and_non_empty = os.path.isfile(output_path) and os.path.getsize(output_path) > 0
   feedback_df.to_csv(output_path, mode='a', header=not file_exists_and_non_empty, index=False,

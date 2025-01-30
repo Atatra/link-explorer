@@ -10,8 +10,11 @@ logger = logging.getLogger(__name__)
 # Liste des modèles disponibles
 models = {
     'v1': 'T5-Small de FalconsAi',
-    'v2': 'distilBart fine-tuned'
+    'v2': 'distilBart fine-tuned',
+    'v3': 'T5-Small fine-tuned'
 }
+
+sorted_models = dict(sorted(models.items(), key=lambda item: item[1]))
 
 # App Title
 st.title("Link Explorer")
@@ -104,7 +107,7 @@ def feedback_section(summary, url):
 # Select model
 st.selectbox(
     "Choisissez le modèle de résumé à utiliser :", 
-    list(models.keys()), 
+    list(sorted_models.keys()), 
     format_func=lambda x: models[x], 
     key="model_selector",  # Use a different key to track changes
     on_change=update_model  # Call the function when model changes
