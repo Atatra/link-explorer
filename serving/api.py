@@ -36,12 +36,13 @@ prod_path = "/data/prod_data.csv"
 def load_model():
   """ global summarizer """
   #summarizer = get_summarizer()
-  global summarizerFalconT5, modelBart, tokenizerBart, modelT5, tokenizerT5
+  global summarizerFalconT5, modelBart, tokenizerBart, modelT5, tokenizerT5, modelBartNew, tokenizerBartNew, modelT5New, tokenizerT5New
   summarizerFalconT5 = get_summarizer("Falconsai/text_summarization")
   modelBart, tokenizerBart = get_model_tokenizer(model_name="claradlnv/distilbart-fine-tune")
   modelT5, tokenizerT5 = get_model_tokenizer(model_name="maryemj/T5_Small_fineTuned")
+  modelBartNew, tokenizerBartNew = get_model_tokenizer(model_name="claradlnv/fine-tuned-distilbart2")
+  modelT5New, tokenizerT5New = get_model_tokenizer(model_name="Atatra/T5_Small_fineTuned2")
 
-    
 @app.get("/")
 def read_root(input):
   return {"message": f"Hello, {input}"}
@@ -53,6 +54,8 @@ async def summary(url: str, version: str = "v1"):
     - v1 for FalconsAI T5-small
     - v2 for our fine-tuned distilBart on a caption summary dataset
     - v3 for our fine-tuned T5-Small on a caption summary dataset
+    - V4 for our fine-tuned distilBart on our custom summary dataset
+    - V5 for our fine-tuned T5-Small on our custom summary dataset
   """
   response = requests.get(url)
   # Vérifie si la requête a réussi (code 200)
@@ -70,7 +73,10 @@ async def summary(url: str, version: str = "v1"):
     summary = get_summary(extracted_text, model=modelBart, tokenizer=tokenizerBart)
   elif version == "v3":
     summary = generate_summary(extracted_text, model=modelT5, tokenizer=tokenizerT5)
-
+  elif version == "v4":
+    summary = generate_summary(extracted_text, model=modelBartNew, tokenizer=tokenizerBartNew)
+  elif version == "v5":
+    summary = generate_summary(extracted_text, model=modelT5New, tokenizer=tokenizerT5New)
   return {"summary": summary, "original": extracted_text}
 
 
@@ -145,16 +151,20 @@ def get_model_tokenizer(model_name="maryemj/T5_Small_fineTuned"):
   logger.info(f"Initializing model and tokenizer with '{model_name}'...")
   try:
 
-    if model_name=="maryemj/T5_Small_fineTuned":
+    if "T5" in model_name:
       model = T5ForConditionalGeneration.from_pretrained(model_name)
       tokenizer = T5Tokenizer.from_pretrained(model_name)
       logger.info("Model and tokenizer loaded successfully.")
       return model, tokenizer
     
-    elif model_name=="claradlnv/distilbart-fine-tune":
+    elif "distilbart" in model_name:
       model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
       tokenizer = AutoTokenizer.from_pretrained(model_name)
       return model, tokenizer
+    
+    else:
+      logger.error("Model not supported")
+      raise
     
   except Exception as e:
     logger.error(f"Failed to load the model and tokenizer: {e}")

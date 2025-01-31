@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 models = {
     'v1': 'T5-Small de FalconsAi',
     'v2': 'distilBart fine-tuned',
-    'v3': 'T5-Small fine-tuned'
+    'v3': 'T5-Small fine-tuned',
+    'v4': 'distilBart custom dataset',
+    'v5': 'T5-Small custom dataset'
 }
 
 sorted_models = dict(sorted(models.items(), key=lambda item: item[1]))
