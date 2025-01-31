@@ -39,4 +39,15 @@ If the reporting displays a white blank page or can't connect to localhost after
 
 ## Description
 
+Summarize youtube videos, Wikipedia pages and many more.
+
 ## Data description
+
+First dataset is available here : https://mmsum-dataset.github.io or in `/data/ref_data.csv`
+
+- Note that the summaries in this dataset are strangely worded and extremely short.
+
+Our handmade dataset is available here : `/data/new_ref_data_final.csv`
+
+- The summaries have been generated using big models (GPT3.5 and Bart). The idea was to fine-tune the smaller models (to able to generate a summary fast on Docker using only cpu) using distillation.
+- The urls for the youtube videos have been scraped using Requests (for each root_url, get recommended urls recursively) (script is in `/scripts/youtube-scraper.ipnyb`). An OpenAPI key is necessary for full automation (GPT3.5). The process has been automated on our Kaggle notebook (Bart).
