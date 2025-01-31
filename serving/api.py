@@ -197,9 +197,13 @@ def get_summary(text, tokenizer, model):
   pred_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
   return pred_text
 
+def clean_input_data(data):
+  return data.replace("\x00", "")  # Remove null characters
+
 def save_feedback(full, summary, rating, version, output_path):
+  full = clean_input_data(full)
   feedback_data = {"article": full, "abstract": summary, "rating": rating, "version": version}
   feedback_df = pd.DataFrame([feedback_data])
   file_exists_and_non_empty = os.path.isfile(output_path) and os.path.getsize(output_path) > 0
   feedback_df.to_csv(output_path, mode='a', header=not file_exists_and_non_empty, index=False,
-                     quoting=csv.QUOTE_MINIMAL)
+                     quoting=csv.QUOTE_MINIMAL, encoding="utf-8")

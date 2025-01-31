@@ -9,11 +9,11 @@ logger = logging.getLogger(__name__)
 
 # Liste des modèles disponibles
 models = {
-    'v1': 'T5-Small de FalconsAi',
-    'v2': 'distilBart fine-tuned',
-    'v3': 'T5-Small fine-tuned',
-    'v4': 'distilBart custom dataset',
-    'v5': 'T5-Small custom dataset'
+    'v1': 'T5-Small de FalconsAi (v1)',
+    'v2': 'distilBart fine-tuned (v2)',
+    'v3': 'T5-Small fine-tuned (v3)',
+    'v4': 'distilBart custom dataset (v4)',
+    'v5': 'T5-Small custom dataset (v5)'
 }
 
 sorted_models = dict(sorted(models.items(), key=lambda item: item[1]))
@@ -44,7 +44,7 @@ if 'show_original' not in st.session_state:
     st.session_state['show_original'] = False
 
 if 'chosen_model' not in st.session_state:
-    st.session_state['chosen_model'] = 'v1'
+    st.session_state['chosen_model'] = first_key = next(iter(sorted_models)) # Get first key
 
 def update_model():
     st.session_state['chosen_model'] = st.session_state['model_selector']
