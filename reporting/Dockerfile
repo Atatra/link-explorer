@@ -1,8 +1,10 @@
 FROM python:3.12-slim
 
+# WORKDIR /app
+
 RUN ls
 
-# COPY project.py .
+COPY project.py .
 
 COPY requirements.txt .
 
