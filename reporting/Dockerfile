@@ -1,6 +1,8 @@
 FROM python:3.12-slim
 
-COPY project.py .
+RUN ls
+
+# COPY project.py .
 
 COPY requirements.txt .
 

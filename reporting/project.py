@@ -22,26 +22,31 @@ from evidently.tests import *
 # If ref_data_report does not exist, create it by predicting the target and adding the prediction column to the dataframe
 # We need the prediction our first model makes on our reference data to compare it with the predictions made on the production data
 # (It's not always going to be perfect, even on training data)
-if os.path.exists("/data/ref_data_report.csv"): 
-    ref_data = pd.read_csv("/data/ref_data_report.csv")
+if os.path.exists("/data/evaluated_ref_data_sample.csv"): 
+    ref_data = pd.read_csv("/data/evaluated_ref_data_sample.csv")
 else:
     # Error, you need to generate the prediction labels, needs to be done outside of this docker container
-    raise ValueError("ref_data_report.csv does not exist. Please generate it by running gen_ref_prediction.py")
+    raise ValueError("evaluated_ref_data_sample.csv does not exist. Please generate it by running refdata_evaluating_sampling.py")
 
 # Load prod_data.csv
-prod_data = pd.read_csv("/data/prod_data.csv")
+
+# Do we want to split by model (prod_data model attribute ? if so how can we allow the user to choose which model to compare to
+# baseline model ?)
+
+
+
+# prod_data = pd.read_csv("/data/prod_data.csv")
 
 WORKSPACE = "workspace"
 
 date_time_stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%Ss")
 
-YOUR_PROJECT_NAME = "Emotion Voice Recognition"
-YOUR_PROJECT_DESCRIPTION = date_time_stamp
+BASE_PROJECT_NAME = "Link Explorer"
+BASE_PROJECT_DESCRIPTION = date_time_stamp
+# TODO ADD DIFFERENT NAMES FOR THE DIFFERENT MODELS (IN THE CREATE)
 
-emotion_labels = {'C','T','J','P','D','S','N'}
 
-
-def create_report(i: int):
+def create_report(i: int, ref_data, prod_data):
     data_report = Report(
         metrics=[
             DatasetSummaryMetric(),
@@ -323,34 +328,40 @@ def add_existing_reports_to_project(ws, project, artifact_path):
             print(f"Erreur lors du chargement du rapport {report_file}: {e}")
 
 
-def create_demo_project(workspace: str):
-    ws = Workspace.create(workspace)
-    project = create_project(ws)
+def create_all_projects(workspace: str):
+    # Ensure split_prod_data.py has been run to get all datasets separately for comparison
+    current_versions = ["v1", "v2", "v3", "v4", "v5"]
 
-    # Création d'un seul rapport
-    report = create_report(i=0)
+    print("Checking if production data has been updated...")
+    raise ValueError("Check to see if file updates")
+    # Load reference data
+    ref_data_path = os.path.join(workspace, '/data/reporting/evaluated_ref_data_sample.csv')
+    if not os.path.exists(ref_data_path):
+        raise ValueError("Evaluated reference data not found. Please generate it first using refdata_evaluating_sampling.py.")
+    ref_data = pd.read_csv(ref_data_path)
 
-    # Enregistrement du rapport dans le dossier "artifacts"
-    artifact_folder = "artifacts/reports"
-    os.makedirs(artifact_folder, exist_ok=True)
-    report_name = f"report_{report.timestamp.strftime('%Y%m%d%H%M%S')}.pkl"  # Modification de l'extension du fichier
-    report_path = os.path.join(artifact_folder, report_name)
+    for version in current_versions:
+        # Create a new project name for each model version
+        project_name = f"{BASE_PROJECT_NAME}_{version}"
+        project_description = f"{BASE_PROJECT_DESCRIPTION} - {version}"
 
-    # Sauvegarder le rapport en tant que fichier pickle
-    save_report_to_file(report, report_path)
+        # Load production data for the current version
+        prod_data_path = os.path.join(workspace, f'data/reporting/split_prod_data/prod_data_{version}.csv')
+        if not os.path.exists(prod_data_path):
+            raise ValueError(f"Production data for version {version} not found.")
+        prod_data = pd.read_csv(prod_data_path)
 
-    # Ajout du rapport au projet
-    ws.add_report(project.id, report)
+        # Create and run the report
+        report = create_report(version, ref_data, prod_data)
 
-    # Ajout des rapports existants au projet
-    add_existing_reports_to_project(ws, project, artifact_folder)
+        # Save the report
+        artifact_folder = os.path.join(workspace, "artifacts/reports")
+        os.makedirs(artifact_folder, exist_ok=True)
+        report_name = f"{project_name}_report_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.html"
+        report_path = os.path.join(artifact_folder, report_name)
+        report.save_html(report_path)
 
-    # Création d'une suite de tests
-    test_suite = create_test_suite(i=0)
-
-    # Ajout de la suite de tests au projet
-    ws.add_test_suite(project.id, test_suite)
-
+        print(f"Report for {version} saved to {report_path}")
 
 if __name__ == "__main__":
-    create_demo_project(WORKSPACE)
+    create_all_project(WORKSPACE)
